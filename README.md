@@ -77,17 +77,17 @@ update(v, turn)  ──> ChassisCtrl::update()
 当前 `Core/Src/main.c` 处于**调试模式**，已注释掉 PS2 遥控逻辑，上电后四轮持续前进：
 
 ```c
-#define FORWARD_SPEED 1500.0f   // -3600 ~ 3600，1500 约 42% 占空比
+#define FORWARD_SPEED 3600.0f   // -3600 ~ 3600，3600 = 满占空比
 
 while (1) {
-    update(FORWARD_SPEED, 0.0f);   // 线速度 1500，转向 0
+    update(FORWARD_SPEED, 0.0f);   // 线速度满速，转向 0
     HAL_Delay(30);
 }
 ```
 
 调整 `FORWARD_SPEED` 即可：
-- 转速不够/地面打滑 → 调大（上限 3600）
-- 太快 → 调小；低于 ±28 会落入死区，电机不转
+- 当前 **3600 = 100% 占空比（满速）**
+- 想降速按比例调小（如 1800 约 50%）；低于 ±28 会落入死区，电机不转
 
 需要恢复手柄遥控时，从 git 历史取回 PS2 控制分支即可（`git log -p Core/Src/main.c`）。
 

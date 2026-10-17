@@ -62,8 +62,8 @@ void SystemClock_Config(void);
 
 /* 调试模式：写死为持续前进，不依赖 PS2 手柄。
  * 取值范围 -3600 ~ 3600（对应 -100% ~ +100% 占空比）。
- * 1500 约等于 42% 占空比：地面打滑可调大，觉得太快可调小。 */
-#define FORWARD_SPEED 1500.0f
+ * 3600 = 满占空比（CCR = ARR+1，PWM1 模式恒有效）。 */
+#define FORWARD_SPEED 3600.0f
 
 /* USER CODE END 0 */
 
