@@ -1,0 +1,33 @@
+# Build output
+build/
+Debug/
+Release/
+*.o
+*.d
+*.obj
+*.elf
+*.map
+*.bin
+*.hex
+*.su
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# IDE
+.idea/
+.vscode/
+.cache/
+.pi/
+*.ioc.bak
+.mxproject
+
+# WorkBuddy
+.workbuddy/
+
+# OS
+Thumbs.db
+.DS_Store
