@@ -1,17 +1,13 @@
 #ifndef CHASSIS_H
 #define CHASSIS_H
 
-
-#include <sys/types.h>
 #ifdef __cplusplus
-
 extern "C" {
 #endif
 #include "main.h"
-#include "stm32_hal_legacy.h"
-#include "stm32f103xb.h"
 #include "stm32f1xx_hal_gpio.h"
 #include "stm32f1xx_hal_tim.h"
+
 void chassis_init();
 void update(float v, float turn);
 
@@ -21,75 +17,35 @@ void update(float v, float turn);
 
 #ifdef __cplusplus
 
+/* 单路直流电机：IN1 接定时器 PWM 通道，IN2 接普通 GPIO。
+ *   正转：IN1 输出占空比，IN2 = 低
+ *   反转：IN1 输出占空比，IN2 = 高
+ *   停止：IN1 占空比 0，   IN2 = 低
+ * 对应板上的 TB6612 类驱动（IN1/IN2 + STBY）。 */
 class Motor {
 public:
-  Motor()
-      : _htim_pwm1(nullptr), _pwm_channel1(0), _htim_pwm2(nullptr),
-        _pwm_channel2(0) {}
-  Motor(TIM_HandleTypeDef *hp1, TIM_HandleTypeDef *hp2, uint32_t c1,
-        uint32_t c2)
-      : _htim_pwm1(hp1), _htim_pwm2(hp2), _pwm_channel1(c1), _pwm_channel2(c2) {
-  }
+  Motor() = default;
 
-  // 拷贝构造函数
-  Motor(const Motor &other)
-      : _htim_pwm1(other._htim_pwm1), _pwm_channel1(other._pwm_channel1),
-        _htim_pwm2(other._htim_pwm2), _pwm_channel2(other._pwm_channel2) {}
+  Motor(TIM_HandleTypeDef *htim, uint32_t channel, GPIO_TypeDef *in2Port,
+        uint16_t in2Pin)
+      : htim_(htim), channel_(channel), in2Port_(in2Port), in2Pin_(in2Pin) {}
 
-  // 拷贝赋值运算符
-  Motor &operator=(const Motor &other) {
-    if (this != &other) {
-      _htim_pwm1 = other._htim_pwm1;
-      _pwm_channel1 = other._pwm_channel1;
-      _htim_pwm2 = other._htim_pwm2;
-      _pwm_channel2 = other._pwm_channel2;
-    }
-    return *this;
-  }
+  /* 某侧轮子实际转向与预期相反时置 true，无需改接线。
+   * 注意：原理图上右侧电机 O1/O2 在排针上的顺序与左侧相反，
+   * 若 FR/BR 反转方向不对，把对应电机 set_reversed(true) 即可。 */
+  void set_reversed(bool reversed) { reversed_ = reversed; }
 
-  // 移动构造函数
-  Motor(Motor &&other) noexcept
-      : _htim_pwm1(other._htim_pwm1), _pwm_channel1(other._pwm_channel1),
-        _htim_pwm2(other._htim_pwm2), _pwm_channel2(other._pwm_channel2) {
-    other._htim_pwm1 = nullptr;
-    other._htim_pwm2 = nullptr;
-  }
-
-  // 移动赋值运算符
-  Motor &operator=(Motor &&other) noexcept {
-    if (this != &other) {
-      _htim_pwm1 = other._htim_pwm1;
-      _pwm_channel1 = other._pwm_channel1;
-      _htim_pwm2 = other._htim_pwm2;
-      _pwm_channel2 = other._pwm_channel2;
-      other._htim_pwm1 = nullptr;
-      other._htim_pwm2 = nullptr;
-    }
-    return *this;
-  }
-  void set_compare(bool is_converse, uint32_t cnt) {
-    if (!is_converse) {
-      __HAL_TIM_SetCompare(_htim_pwm1, _pwm_channel1, cnt);
-      __HAL_TIM_SetCompare(_htim_pwm2, _pwm_channel2, 0);
-    } else {
-      __HAL_TIM_SetCompare(_htim_pwm1, _pwm_channel1, 0);
-      __HAL_TIM_SetCompare(_htim_pwm2, _pwm_channel2, cnt);
-    }
-  };
-
-  ~Motor() {
-    _htim_pwm1 = nullptr;
-    _htim_pwm2 = nullptr;
-  }
-
+  /* speed 取值 -PWM_PERIOD ~ +PWM_PERIOD，正为前进 */
   void set_speed(int16_t speed);
 
 private:
-  TIM_HandleTypeDef *_htim_pwm1;
-  uint32_t _pwm_channel1;
-  TIM_HandleTypeDef *_htim_pwm2;
-  uint32_t _pwm_channel2;
+  TIM_HandleTypeDef *htim_ = nullptr;
+  uint32_t channel_ = 0;
+  GPIO_TypeDef *in2Port_ = nullptr;
+  uint16_t in2Pin_ = 0;
+  bool reversed_ = false;
 };
+
 class ChassisCtrl {
 public:
   ChassisCtrl();
@@ -97,9 +53,12 @@ public:
 
   void update(float v, float turn);
 
+  Motor &motor(int index) { return _m[index]; }
+
 private:
   Motor _m[4];
 };
+
 #endif
 
-#endif // !CHASSIS_H
+#endif // CHASSIS_H

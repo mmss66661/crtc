@@ -96,9 +96,10 @@ int main(void) {
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_TIM2_Init();
-  MX_TIM3_Init();
-  MX_SPI1_Init();
+  /* 注意：MX_TIM2_Init / MX_TIM3_Init / MX_SPI1_Init 已停用。
+   * 它们占用的是 PA0~PA3、PA6/PA7、PB0/PB1，与这块板子的实际接线冲突
+   * （PA6/PA7 = PS2 的 CS/CLK，PB0/PB1 = STBY1/STBY2）。
+   * 电机 PWM 现由 chassis_init() 用 TIM1(PA8~PA11) 自行初始化。 */
   /* USER CODE BEGIN 2 */
   chassis_init();
 

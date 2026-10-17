@@ -12,34 +12,40 @@ PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电�
 | --- | --- |
 | MCU | STM32F103C8T6（Cortex-M3，64 KB Flash / 20 KB SRAM） |
 | 系统时钟 | HSE 8 MHz × PLL9 = **72 MHz**（AHB 72 / APB1 36 / APB2 72） |
-| 手柄接口 | SPI1（**重映射**），主机模式，CPOL=1 / CPHA=2Edge，256 分频 |
-| 电机驱动 | TIM2 + TIM3 共 8 路 PWM，20 kHz（72 MHz / 3600） |
+| 手柄接口 | PS2 接收器，接 PA4~PA7（当前固件未启用） |
+| 电机驱动 | TIM1 CH1~CH4 输出 PWM，20 kHz（72 MHz / 3600），IN2 与 STBY 由 GPIO 控制 |
 | 调试接口 | SWD（PA13 / PA14） |
 
 ### 引脚分配
 
-| 功能 | 引脚 | 说明 |
+引脚以原理图（`CRTC_CAR_DEMO.ioc` 之外的 PCB 设计）为准：
+
+| MCU 引脚 | 网络名 | 功能 |
 | --- | --- | --- |
-| SPI1_SCK | PB3 | 重映射 |
-| SPI1_MISO | PB4 | 重映射 |
-| SPI1_MOSI | PB5 | 重映射 |
-| PS2_CS | PB6 | GPIO 推挽输出，软件片选 |
-| MOTOR1 PWM | PA0 / PA1 | TIM2_CH1 / CH2 |
-| MOTOR2 PWM | PA2 / PA3 | TIM2_CH3 / CH4 |
-| MOTOR3 PWM | PA6 / PA7 | TIM3_CH1 / CH2 |
-| MOTOR4 PWM | PB0 / PB1 | TIM3_CH3 / CH4 |
-| 方向/使能 | PA11, PA12, PB10, PB11 | GPIO 推挽输出 |
+| PA8 / PB12 | FL_IN1 / FL_IN2 | 左前电机（CH1 + GPIO） |
+| PA9 / PB13 | FR_IN1 / FR_IN2 | 右前电机（CH2 + GPIO） |
+| PA10 / PB14 | BL_IN1 / BL_IN2 | 左后电机（CH3 + GPIO） |
+| PA11 / PB15 | BR_IN1 / BR_IN2 | 右后电机（CH4 + GPIO） |
+| PB0 | STBY1 | 前级驱动使能（高有效） |
+| PB1 | STBY2 | 后级驱动使能（高有效） |
+| PA7 | CLK | PS2 时钟 |
+| PA6 | CS | PS2 片选 |
+| PA5 | CMD | PS2 命令（MCU → 手柄） |
+| PA4 | DI | PS2 数据（手柄 → MCU） |
+
+> 板上 PB3 / PB4 / PB5 / PB6 为空脚，`MX_TIM2_Init`、`MX_TIM3_Init`、`MX_SPI1_Init` 已停用。
+
 
 ---
 
 ## 软件结构
 
 ```
-Core/               STM32CubeMX 生成的 HAL 初始化（时钟、GPIO、TIM、SPI、中断）
-Chassis/            底盘层
-  Inc/Chassis.h       Motor 类（双 PWM 正反转）+ ChassisCtrl（差速解算）
-  Src/Chassis.cpp     电机 PWM 启动、速度限幅、左右轮分配
-PS2/                PS2 手柄驱动
+Core/               STM32CubeMX 生成的 HAL 初始化（时钟、GPIO、中断）
+Chassis/            底盘层（含板级引脚初始化，不再依赖 tim.c / spi.c）
+  Inc/Chassis.h       Motor 类（PWM + 方向脚）+ ChassisCtrl（差速解算）
+  Src/Chassis.cpp     TIM1 PWM 初始化、STBY 使能、速度限幅、左右轮分配
+PS2/                PS2 手柄驱动（当前固件未启用，引脚尚未适配）
   Inc/PS2.h           PS2 类 + C 接口（PS2_Init / PS2_ReadRaw）
   Src/PS2.cpp         SPI 9 字节帧协议、DWT 微秒延时
 cmake/              CubeMX 生成的 CMake 目标（stm32cubemx / STM32_Drivers）
@@ -48,23 +54,23 @@ cmake/              CubeMX 生成的 CMake 目标（stm32cubemx / STM32_Drivers�
 ### 控制流程
 
 ```
-PS2 手柄 ──SPI(9 字节帧)──> PS2::read() ──> PS2RawData
-                                              │
-                                   按键位解包 + 摇杆居中(减 128)
-                                              │
-                                              ▼
-                            update(-ly, lx)  ──> ChassisCtrl::update()
-                                              │
-                              left  = v - turn/2
-                              right = v + turn/2
-                                              │
-                                              ▼
-                        Motor::set_speed() ──> TIMx->CCR 占空比
+update(v, turn)  ──> ChassisCtrl::update()
+                        │
+          left  = v - turn/2
+          right = v + turn/2
+                        │
+                        ▼
+                 Motor::set_speed()
+                        │
+        ┌───────────────┴───────────────┐
+   正转 │ IN2 = 低, CCR = |speed|   反转 │ IN2 = 高, CCR = |speed|
+        └───────────────┬───────────────┘
+                        ▼
+              TIM1 CHx ──> IN1 占空比
 ```
 
-- 左摇杆 **Y 轴**（`ly`）控制前进后退，取反后作为线速度 `v`
-- 左摇杆 **X 轴**（`lx`）控制转向，作为角速度 `turn`
 - 速度限幅 ±3600（对应 100% 占空比），**死区 ±28** 防止电机堵转啸叫
+- `Motor::set_reversed(true)` 可在软件里翻转单侧转向，无需改接线
 
 ### 当前固件：写死持续前进
 
@@ -135,11 +141,13 @@ cmake --build build/Debug
 当前资源占用：
 
 ```
-RAM:   1896 B / 20 KB   (9.26%)
-FLASH: 12836 B / 64 KB  (19.59%)
+RAM:   1816 B / 20 KB   (8.87%)
+FLASH: 10696 B / 64 KB  (16.32%)
 ```
 
 > 当前为「写死前进」调试固件，PS2 驱动未被引用，已被 `--gc-sections` 裁掉，故 FLASH 占用比遥控版本小。
+
+> **重要**：`MX_TIM2_Init` / `MX_TIM3_Init` / `MX_SPI1_Init` 已在 `main.c` 中停用，电机初始化改由 `chassis_init()` 完成。`CRTC_CAR_DEMO.ioc` 仍是旧配置，**不要用 CubeMX 重新生成代码**，否则会把 PA6/PA7/PB0/PB1 重新配成 TIM3 PWM 并覆盖本目录的引脚修正。
 
 > 注意：构建缓存与工具链强绑定。若之前用 CLion 自带的 MinGW 配置过 `build/Debug`，`CMakeCache.txt` 中会残留 MSVC/MinGW 路径导致构建失败，删掉 `build/Debug` 重新配置即可。
 
@@ -169,9 +177,11 @@ cd "E:/STM32CubeCLT_1.18.0/STM32CubeProgrammer/bin"
 
 ## 已知问题 / TODO
 
-1. ~~`ChassisCtrl` 构造函数数组越界~~ — 已修复（原 `_m[4]` 改为 `_m[3]`）。修复后四路电机均正确绑定 PWM 通道，`update()` 不会再解引用空指针。
-2. **手柄掉线无保护**：`PS2::read()` 恒返回 `true`，`online_` 成员从未被赋值，手柄拔掉后小车会保持最后一次速度继续跑。（当前固件未使用手柄，恢复遥控时需一并处理）
-3. `PS2::transfer()` 中 `HAL_SPI_TransmitReceive` 的返回值未检查（`-Wunused-variable`）。
-4. `Motor` 构造函数的成员初始化列表顺序与声明顺序不一致（`-Wreorder`）。
-5. 缺少看门狗；调试模式 `HAL_Delay(30)` 约 33 Hz 刷新，实际控速建议改为定时器中断。
+1. ~~`ChassisCtrl` 构造函数数组越界~~ — 已修复（原 `_m[4]` 改为 `_m[3]`）。
+2. ~~引脚与 PCB 不匹配~~ — 已修复。原固件用 TIM2(PA0~PA3)/TIM3(PA6,PA7,PB0,PB1)/SPI1 重映射(PB3~PB6)，而板上这些脚是空脚、PS2 的 CS/CLK 和 STBY。现改为 **TIM1 CH1~CH4 (PA8~PA11) + PB12~PB15 方向 + PB0/PB1 使能**。
+3. **PS2 驱动尚未适配**：`PS2.cpp` 仍按 SPI1 重映射走 PB3~PB6，与板上 PA4~PA7 不符。而且板上 `CLK=PA7 / CMD=PA5` 与 SPI1 硬件功能（`PA5=SCK`、`PA7=MOSI`）正好互换，`DI=PA4` 落在 NSS 上——**硬件 SPI 用不了，需要改成软件模拟时序（bit-bang）**。
+4. **右侧电机 O1/O2 顺序存疑**：H2/H4 排针上 `FR_O2/FR_O1`（及 `BR_O2/BR_O1`）与左侧相反，若驱动板排线 1:1 直通，右前/右后轮会反转。软件里用 `Motor::set_reversed(true)` 一行即可翻转，先实测再定。
+5. `PS2::read()` 恒返回 `true`，`online_` 从未赋值 → 手柄掉线后小车会保持最后速度（恢复遥控时需一并处理）。
+6. 缺少看门狗；调试模式 `HAL_Delay(30)` 约 33 Hz 刷新，实际控速建议改为定时器中断。
+
 
