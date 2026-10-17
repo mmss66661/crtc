@@ -1,8 +1,36 @@
 # CRTC_CAR_DEMO
 
-基于 **STM32F103C8T6** 的 PS2 手柄遥控小车，使用 HAL 库 + CMake/Ninja 构建，C/C++ 混合编程。
+基于 **STM32F103C8T6** 的 PS2 手柄遥控小车，参加**重庆大学机器人训练大赛 CRTC2026**。
+使用 HAL 库 + CMake/Ninja 构建，C/C++ 混合编程。
 
 PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电机 PWM，实现前进、后退与差速转向。
+
+---
+
+## 仓库结构
+
+```
+.
+├── README.md                     本文件：项目概览与开发指引
+├── docs/                         【参赛文档】按 CRTC2026 手册 4.3 规范存放
+│   ├── README.md                 文档索引 + 中期考核指标完成情况
+│   ├── 01-整体方案与硬件设计.md
+│   ├── 02-底盘运动.md            含演示视频
+│   ├── 03-PS2手柄遥控.md
+│   ├── 04-开发日志与问题排查.md
+│   └── media/
+│       └── chassis-motion.mp4    底盘运动演示视频
+├── Chassis/                      底盘层：电机控制 + 差速解算 + 板级初始化
+├── PS2/                          PS2 手柄驱动
+├── Core/                         CubeMX 生成的 HAL 初始化
+├── Drivers/                      STM32 HAL / CMSIS
+├── cmake/                        构建配置
+├── CMakeLists.txt                构建入口
+├── flash.bat                     一键烧录脚本（ST-LINK）
+└── build/Debug/                  构建产物（已 gitignore）
+```
+
+> 参赛文档全部位于 `docs/` 目录，详细设计说明与技术决策记录请从那里开始阅读。
 
 ---
 
