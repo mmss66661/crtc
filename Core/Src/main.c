@@ -60,36 +60,11 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-typedef struct {
-  uint8_t up;
-  uint8_t right;
-  uint8_t down;
-  uint8_t left;
+/* 调试模式：写死为持续前进，不依赖 PS2 手柄。
+ * 取值范围 -3600 ~ 3600（对应 -100% ~ +100% 占空比）。
+ * 1500 约等于 42% 占空比：地面打滑可调大，觉得太快可调小。 */
+#define FORWARD_SPEED 1500.0f
 
-  uint8_t l2;
-  uint8_t r2;
-  uint8_t l1;
-  uint8_t r1;
-
-  uint8_t Y;
-  uint8_t B;
-  uint8_t A;
-  uint8_t X;
-
-  int16_t rx;
-  int16_t ry;
-
-  int16_t lx;
-  int16_t ly;
-
-  uint8_t mode;
-
-  uint8_t online;
-
-} PS2Data;
-
-volatile PS2Data ps2Data;
-volatile float speed = 0;
 /* USER CODE END 0 */
 
 /**
@@ -126,9 +101,6 @@ int main(void) {
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
   chassis_init();
-  PS2_Init();
-
-  PS2RawData raw = {};
 
   /* USER CODE END 2 */
 
@@ -136,34 +108,7 @@ int main(void) {
   /* USER CODE BEGIN WHILE */
   while (1) {
 
-    if (PS2_ReadRaw(&raw)) {
-      uint16_t key =
-          (uint16_t)(raw.buttonLow) | ((uint16_t)(raw.buttonHigh) << 8);
-
-      // PS2 按键低有效
-      key = (uint16_t)(~key);
-
-      ps2Data.up = (key & (1U << 4)) != 0;
-      ps2Data.right = (key & (1U << 5)) != 0;
-      ps2Data.down = (key & (1U << 6)) != 0;
-      ps2Data.left = (key & (1U << 7)) != 0;
-
-      ps2Data.l2 = (key & (1U << 8)) != 0;
-      ps2Data.r2 = (key & (1U << 9)) != 0;
-      ps2Data.l1 = (key & (1U << 10)) != 0;
-      ps2Data.r1 = (key & (1U << 11)) != 0;
-
-      ps2Data.Y = (key & (1U << 12)) != 0;
-      ps2Data.B = (key & (1U << 13)) != 0;
-      ps2Data.A = (key & (1U << 14)) != 0;
-      ps2Data.X = (key & (1U << 15)) != 0;
-
-      ps2Data.rx = (int16_t)(raw.rightX) - 128;
-      ps2Data.ry = (int16_t)(raw.rightY) - 128;
-      ps2Data.lx = (int16_t)(raw.leftX) - 128;
-      ps2Data.ly = (int16_t)(raw.leftY) - 128;
-    }
-    update((float)(-ps2Data.ly), (float)(ps2Data.lx));
+    update(FORWARD_SPEED, 0.0f);
 
     HAL_Delay(30);
 

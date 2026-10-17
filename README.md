@@ -66,6 +66,25 @@ PS2 手柄 ──SPI(9 字节帧)──> PS2::read() ──> PS2RawData
 - 左摇杆 **X 轴**（`lx`）控制转向，作为角速度 `turn`
 - 速度限幅 ±3600（对应 100% 占空比），**死区 ±28** 防止电机堵转啸叫
 
+### 当前固件：写死持续前进
+
+当前 `Core/Src/main.c` 处于**调试模式**，已注释掉 PS2 遥控逻辑，上电后四轮持续前进：
+
+```c
+#define FORWARD_SPEED 1500.0f   // -3600 ~ 3600，1500 约 42% 占空比
+
+while (1) {
+    update(FORWARD_SPEED, 0.0f);   // 线速度 1500，转向 0
+    HAL_Delay(30);
+}
+```
+
+调整 `FORWARD_SPEED` 即可：
+- 转速不够/地面打滑 → 调大（上限 3600）
+- 太快 → 调小；低于 ±28 会落入死区，电机不转
+
+需要恢复手柄遥控时，从 git 历史取回 PS2 控制分支即可（`git log -p Core/Src/main.c`）。
+
 ### PS2 按键位映射
 
 手柄数据低有效，代码中先取反再判断：
@@ -116,9 +135,11 @@ cmake --build build/Debug
 当前资源占用：
 
 ```
-RAM:   1920 B / 20 KB   (9.38%)
-FLASH: 15496 B / 64 KB  (23.65%)
+RAM:   1896 B / 20 KB   (9.26%)
+FLASH: 12836 B / 64 KB  (19.59%)
 ```
+
+> 当前为「写死前进」调试固件，PS2 驱动未被引用，已被 `--gc-sections` 裁掉，故 FLASH 占用比遥控版本小。
 
 > 注意：构建缓存与工具链强绑定。若之前用 CLion 自带的 MinGW 配置过 `build/Debug`，`CMakeCache.txt` 中会残留 MSVC/MinGW 路径导致构建失败，删掉 `build/Debug` 重新配置即可。
 
@@ -148,8 +169,9 @@ cd "E:/STM32CubeCLT_1.18.0/STM32CubeProgrammer/bin"
 
 ## 已知问题 / TODO
 
-1. **`ChassisCtrl` 构造函数数组越界**（`Chassis/Src/Chassis.cpp:61`）：成员为 `Motor _m[4]`，却被写成 `_m[4] = ...`，导致越界写入，而 `_m[3]`（右侧第二颗电机）始终是默认构造的空指针。`update()` 调用 `_m[3].set_speed()` 时会解引用空 `TIM_HandleTypeDef*`。应改为 `_m[3]`。
-2. **手柄掉线无保护**：`PS2::read()` 恒返回 `true`，`online_` 成员从未被赋值，手柄拔掉后小车会保持最后一次速度继续跑。
+1. ~~`ChassisCtrl` 构造函数数组越界~~ — 已修复（原 `_m[4]` 改为 `_m[3]`）。修复后四路电机均正确绑定 PWM 通道，`update()` 不会再解引用空指针。
+2. **手柄掉线无保护**：`PS2::read()` 恒返回 `true`，`online_` 成员从未被赋值，手柄拔掉后小车会保持最后一次速度继续跑。（当前固件未使用手柄，恢复遥控时需一并处理）
 3. `PS2::transfer()` 中 `HAL_SPI_TransmitReceive` 的返回值未检查（`-Wunused-variable`）。
 4. `Motor` 构造函数的成员初始化列表顺序与声明顺序不一致（`-Wreorder`）。
-5. 缺少看门狗；主循环 `HAL_Delay(30)` 约 33 Hz，转向响应偏慢，建议改为定时器中断或降低延时。
+5. 缺少看门狗；调试模式 `HAL_Delay(30)` 约 33 Hz 刷新，实际控速建议改为定时器中断。
+

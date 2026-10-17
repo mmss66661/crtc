@@ -58,7 +58,7 @@ ChassisCtrl::ChassisCtrl() {
 
   _m[2] = Motor(&htim3, &htim3, TIM_CHANNEL_1, TIM_CHANNEL_2);
 
-  _m[4] = Motor(&htim3, &htim3, TIM_CHANNEL_3, TIM_CHANNEL_4);
+  _m[3] = Motor(&htim3, &htim3, TIM_CHANNEL_3, TIM_CHANNEL_4);
 }
 void ChassisCtrl::update(float v, float turn) {
   int16_t left_speed = v - turn / 2.0;
