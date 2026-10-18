@@ -49,6 +49,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Chassis/Src/Chassis.cpp
     Chassis/Inc/Chassis.h
     PS2/Src/PS2.cpp
+    Servo/Src/Servo.cpp
+    Servo/Inc/Servo.h
 )
 
 # Add include paths
@@ -56,6 +58,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     Chassis/Inc
     PS2/Inc
+    Servo/Inc
 )
 
 # Add project symbols (macros)

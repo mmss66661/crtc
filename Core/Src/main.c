@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "Chassis.h"
 #include "PS2.h"
+#include "Servo.h"
 #include <stdint.h>
 /* USER CODE END Includes */
 
@@ -60,10 +61,22 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* 调试模式：写死为持续前进，不依赖 PS2 手柄。
- * 取值范围 -3600 ~ 3600（对应 -100% ~ +100% 占空比）。
- * 3600 = 满占空比（CCR = ARR+1，PWM1 模式恒有效）。 */
-#define FORWARD_SPEED 3600.0f
+/* PS2 手柄遥控（麦轮）
+ *   左摇杆：平移 —— 上下 = 前进/后退，左右 = 左右横移
+ *   右摇杆 X：原地旋转
+ * 摇杆量程 0~255、中位 128，映射到轮速 ±3600。 */
+#define JOY_CENTER 128
+#define JOY_DEADZONE 12      /* 约 ±10% 死区，防止摇杆回中不准导致漂移 */
+#define JOY_SCALE (3600.0f / 128.0f) /* 摇杆偏移量 → 轮速 */
+#define W_SCALE (1800.0f / 128.0f)   /* 旋转降半速，更好控 */
+#define CTRL_PERIOD_MS 20U    /* 50 Hz 控制周期 */
+#define PS2_LOST_LIMIT 5U     /* 连续读取失败多少次判定为掉线 */
+
+/* 舵机控制按键：手柄「×」键（A 键），每次按下在两个预设角度间切换。
+ * 按键位参见 PS2 协议：btn = ~(buttonLow | buttonHigh<<8)
+ *   bit10 = L1   bit11 = R1   bit14 = ×   bit15 = □
+ * 想换成别的键，把下面这一行改成对应位即可。 */
+#define SERVO_BTN_MASK (1U << 14)
 
 /* USER CODE END 0 */
 
@@ -74,7 +87,9 @@ void SystemClock_Config(void);
 int main(void) {
 
   /* USER CODE BEGIN 1 */
-
+  PS2RawData raw = {0};
+  uint8_t ps2_lost = 0U;
+  uint8_t servo_btn_prev = 0U;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -102,6 +117,8 @@ int main(void) {
    * 电机 PWM 现由 chassis_init() 用 TIM1(PA8~PA11) 自行初始化。 */
   /* USER CODE BEGIN 2 */
   chassis_init();
+  PS2_Init();
+  servo_init();
 
   /* USER CODE END 2 */
 
@@ -109,9 +126,52 @@ int main(void) {
   /* USER CODE BEGIN WHILE */
   while (1) {
 
-    update(FORWARD_SPEED, 0.0f);
+    if (PS2_ReadRaw(&raw)) {
+      ps2_lost = 0U;
 
-    HAL_Delay(30);
+      int16_t lx = (int16_t)raw.leftX - JOY_CENTER;
+      int16_t ly = (int16_t)raw.leftY - JOY_CENTER;
+      int16_t rx = (int16_t)raw.rightX - JOY_CENTER;
+
+      /* 死区内一律归零 */
+      if (lx > -JOY_DEADZONE && lx < JOY_DEADZONE) {
+        lx = 0;
+      }
+      if (ly > -JOY_DEADZONE && ly < JOY_DEADZONE) {
+        ly = 0;
+      }
+      if (rx > -JOY_DEADZONE && rx < JOY_DEADZONE) {
+        rx = 0;
+      }
+
+      /* 左摇杆上推 = 前进（ly 减小），右推 = 右移；右摇杆右推 = 顺时针 */
+      chassis_move(-(float)ly * JOY_SCALE, (float)lx * JOY_SCALE,
+                   -(float)rx * W_SCALE);
+
+      /* 舵机：按键上升沿触发一次切换（按住不会连续翻） */
+      {
+        uint16_t btn =
+            (uint16_t)(raw.buttonLow | ((uint16_t)raw.buttonHigh << 8));
+        btn = (uint16_t)(~btn); /* 手柄按键低有效 */
+
+        uint8_t pressed = (btn & SERVO_BTN_MASK) ? 1U : 0U;
+        if (pressed && !servo_btn_prev) {
+          servo_toggle();
+        }
+        servo_btn_prev = pressed;
+      }
+
+    } else {
+      /* 手柄掉线保护：连续多次读失败则停车，避免保持最后速度冲出去 */
+      if (ps2_lost < PS2_LOST_LIMIT) {
+        ps2_lost++;
+      }
+      if (ps2_lost >= PS2_LOST_LIMIT) {
+        chassis_move(0.0f, 0.0f, 0.0f);
+      }
+    }
+
+    HAL_Delay(CTRL_PERIOD_MS);
 
     /* USER CODE END WHILE */
 

@@ -120,6 +120,10 @@ void chassis_init() {
 }
 
 void update(float v, float turn) { chassis_ctrl.update(v, turn); }
+
+void chassis_move(float vx, float vy, float w) {
+  chassis_ctrl.update_mecanum(vx, vy, w);
+}
 }
 
 void Motor::set_speed(int16_t speed) {
@@ -170,4 +174,46 @@ void ChassisCtrl::update(float v, float turn) {
   _m[1].set_speed(right_speed); /* 右前 FR */
   _m[2].set_speed(left_speed);  /* 左后 BL */
   _m[3].set_speed(right_speed); /* 右后 BR */
+}
+
+/* 麦轮逆运动学（X 型辊子布局）
+ *
+ *   vx > 0 前进      vy > 0 右移      w > 0 逆时针自转
+ *
+ *   FL = vx - vy - w      FR = vx + vy + w
+ *   BL = vx + vy - w      BR = vx - vy + w
+ *
+ * 自检：
+ *   前进   (1,0,0) -> 四轮全 +     后退 ( -1,0,0) -> 四轮全 -
+ *   右移   (0,1,0) -> FL/BR 反，FR/BL 正（对角线同向）
+ *   左移   (0,-1,0)-> FL/BR 正，FR/BL 反
+ *   逆时针 (0,0,1) -> 左侧两轮反，右侧两轮正
+ */
+void ChassisCtrl::update_mecanum(float vx, float vy, float w) {
+  float fl = vx - vy - w;
+  float fr = vx + vy + w;
+  float bl = vx + vy - w;
+  float br = vx - vy + w;
+
+  /* 合成后可能超过满量程，按最大项等比缩放，保证合速度方向不变 */
+  float peak = 0.0f;
+  const float v[4] = {fl, fr, bl, br};
+  for (uint8_t i = 0; i < 4; ++i) {
+    float a = (v[i] < 0.0f) ? -v[i] : v[i];
+    if (a > peak) {
+      peak = a;
+    }
+  }
+  if (peak > (float)PWM_PERIOD) {
+    float scale = (float)PWM_PERIOD / peak;
+    fl *= scale;
+    fr *= scale;
+    bl *= scale;
+    br *= scale;
+  }
+
+  _m[0].set_speed((int16_t)fl); /* 左前 FL */
+  _m[1].set_speed((int16_t)fr); /* 右前 FR */
+  _m[2].set_speed((int16_t)bl); /* 左后 BL */
+  _m[3].set_speed((int16_t)br); /* 右后 BR */
 }
