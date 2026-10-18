@@ -19,7 +19,12 @@ PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电�
 │   ├── 03-PS2手柄遥控.md
 │   ├── 04-开发日志与问题排查.md
 │   └── media/
-│       └── chassis-motion.mp4    底盘运动演示视频
+│       ├── chassis-motion.mp4       四轮电机运动演示视频
+│       ├── chassis-remote-01.mp4    PS2 手柄遥控演示（一）
+│       ├── chassis-remote-02.mp4    PS2 手柄遥控演示（二）
+│       ├── hardware-board-assembly.jpg  整车装配实物
+│       ├── hardware-schematic.png   主控板原理图（嘉立创 EDA）
+│       └── hardware-pcb.png         主控板 PCB 布局（嘉立创 EDA）
 ├── Chassis/                      底盘层：电机控制 + 差速解算 + 板级初始化
 ├── PS2/                          PS2 手柄驱动
 ├── Core/                         CubeMX 生成的 HAL 初始化
@@ -31,6 +36,28 @@ PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电�
 ```
 
 > 参赛文档全部位于 `docs/` 目录，详细设计说明与技术决策记录请从那里开始阅读。
+
+---
+
+## 演示视频
+
+两段实拍演示记录：PS2 手柄遥控下四轮底盘的起动、转向与停止。均为 **1920×1080 / 60 fps / H.264 + AAC**，满足手册 4.5 对演示材料清晰度的要求。
+
+### 演示一：手柄遥控整机运动
+
+<video src="docs/media/chassis-remote-01.mp4" controls width="720"></video>
+
+> [`docs/media/chassis-remote-01.mp4`](docs/media/chassis-remote-01.mp4) —— 4.48 s / 12.2 MB
+
+### 演示二：手柄遥控连续行驶
+
+<video src="docs/media/chassis-remote-02.mp4" controls width="720"></video>
+
+> [`docs/media/chassis-remote-02.mp4`](docs/media/chassis-remote-02.mp4) —— 10.45 s / 26.8 MB
+
+> GitHub 会过滤 README 中的 `<video>` 标签，网页端请直接点击上方链接播放；VS Code / Typora 等本地 Markdown 预览可直接内联播放。
+
+四轮电机开环 PWM 的单独演示见 [`docs/media/chassis-motion.mp4`](docs/media/chassis-motion.mp4)。
 
 ---
 
