@@ -60,11 +60,16 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* 麦轮演示：前 → 后 → 左 → 右 依次执行，动作序列写死、不随机。
- * 轮速范围 -3600 ~ 3600（对应 -100% ~ +100% 占空比）。 */
-#define MOVE_SPEED 3600.0f   /* 单个动作的轮速 */
-#define MOVE_TIME_MS 3000U   /* 每个方向持续 3 秒 */
-#define MOVE_GAP_MS 5000U    /* 动作之间停顿 5 秒 */
+/* PS2 手柄遥控（麦轮）
+ *   左摇杆：平移 —— 上下 = 前进/后退，左右 = 左右横移
+ *   右摇杆 X：原地旋转
+ * 摇杆量程 0~255、中位 128，映射到轮速 ±3600。 */
+#define JOY_CENTER 128
+#define JOY_DEADZONE 12      /* 约 ±10% 死区，防止摇杆回中不准导致漂移 */
+#define JOY_SCALE (3600.0f / 128.0f) /* 摇杆偏移量 → 轮速 */
+#define W_SCALE (1800.0f / 128.0f)   /* 旋转降半速，更好控 */
+#define CTRL_PERIOD_MS 20U    /* 50 Hz 控制周期 */
+#define PS2_LOST_LIMIT 5U     /* 连续读取失败多少次判定为掉线 */
 
 /* USER CODE END 0 */
 
@@ -75,11 +80,8 @@ void SystemClock_Config(void);
 int main(void) {
 
   /* USER CODE BEGIN 1 */
-  /* 四个动作的方向向量：(vx, vy) = 前、后、左、右
-   * vx > 0 前进，vy > 0 右移 */
-  static const float kDirVx[4] = {1.0f, -1.0f, 0.0f, 0.0f};
-  static const float kDirVy[4] = {0.0f, 0.0f, -1.0f, 1.0f};
-  uint8_t step = 0U;
+  PS2RawData raw = {0};
+  uint8_t ps2_lost = 0U;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -107,6 +109,7 @@ int main(void) {
    * 电机 PWM 现由 chassis_init() 用 TIM1(PA8~PA11) 自行初始化。 */
   /* USER CODE BEGIN 2 */
   chassis_init();
+  PS2_Init();
 
   /* USER CODE END 2 */
 
@@ -114,16 +117,39 @@ int main(void) {
   /* USER CODE BEGIN WHILE */
   while (1) {
 
-    /* 1. 按当前方向移动 MOVE_TIME_MS */
-    chassis_move(MOVE_SPEED * kDirVx[step], MOVE_SPEED * kDirVy[step], 0.0f);
-    HAL_Delay(MOVE_TIME_MS);
+    if (PS2_ReadRaw(&raw)) {
+      ps2_lost = 0U;
 
-    /* 2. 停车，间隔 MOVE_GAP_MS 后执行下一个动作 */
-    chassis_move(0.0f, 0.0f, 0.0f);
-    HAL_Delay(MOVE_GAP_MS);
+      int16_t lx = (int16_t)raw.leftX - JOY_CENTER;
+      int16_t ly = (int16_t)raw.leftY - JOY_CENTER;
+      int16_t rx = (int16_t)raw.rightX - JOY_CENTER;
 
-    /* 3. 轮转到下一个方向：前 → 后 → 左 → 右 → 前 ... */
-    step = (uint8_t)((step + 1U) % 4U);
+      /* 死区内一律归零 */
+      if (lx > -JOY_DEADZONE && lx < JOY_DEADZONE) {
+        lx = 0;
+      }
+      if (ly > -JOY_DEADZONE && ly < JOY_DEADZONE) {
+        ly = 0;
+      }
+      if (rx > -JOY_DEADZONE && rx < JOY_DEADZONE) {
+        rx = 0;
+      }
+
+      /* 左摇杆上推 = 前进（ly 减小），右推 = 右移；右摇杆右推 = 顺时针 */
+      chassis_move(-(float)ly * JOY_SCALE, (float)lx * JOY_SCALE,
+                   -(float)rx * W_SCALE);
+
+    } else {
+      /* 手柄掉线保护：连续多次读失败则停车，避免保持最后速度冲出去 */
+      if (ps2_lost < PS2_LOST_LIMIT) {
+        ps2_lost++;
+      }
+      if (ps2_lost >= PS2_LOST_LIMIT) {
+        chassis_move(0.0f, 0.0f, 0.0f);
+      }
+    }
+
+    HAL_Delay(CTRL_PERIOD_MS);
 
     /* USER CODE END WHILE */
 
