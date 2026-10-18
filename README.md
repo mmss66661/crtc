@@ -21,7 +21,8 @@ PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电�
 │   └── media/
 │       └── chassis-motion.mp4    底盘运动演示视频
 ├── Chassis/                      底盘层：电机控制 + 麦轮解算 + 板级初始化
-├── PS2/                          PS2 手柄驱动
+├── PS2/                          PS2 手柄驱动（GPIO 模拟 SPI 时序）
+├── Servo/                        舵机控制（PB9 / TIM4_CH4，50 Hz PWM）
 ├── Core/                         CubeMX 生成的 HAL 初始化
 ├── Drivers/                      STM32 HAL / CMSIS
 ├── cmake/                        构建配置
@@ -56,6 +57,7 @@ PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电�
 | PA11 / PB15 | BR_IN1 / BR_IN2 | 右后电机（CH4 + GPIO） |
 | PB0 | STBY1 | 前级驱动使能（高有效） |
 | PB1 | STBY2 | 后级驱动使能（高有效） |
+| PB9 | SERVO | 舵机信号（TIM4_CH4，50 Hz / 500~2500 μs） |
 | PA7 | CLK | PS2 时钟 |
 | PA6 | CS | PS2 片选 |
 | PA5 | CMD | PS2 命令（MCU → 手柄） |
@@ -76,6 +78,9 @@ Chassis/            底盘层（含板级引脚初始化，不再依赖 tim.c / 
 PS2/                PS2 手柄驱动（GPIO 模拟 SPI 时序）
   Inc/PS2.h           PS2 类 + C 接口（PS2_Init / PS2_ReadRaw）
   Src/PS2.cpp         9 字节帧协议、bit-bang 时序、DWT 微秒延时
+Servo/              舵机层
+  Inc/Servo.h         角度接口（servo_set_angle / servo_toggle）
+  Src/Servo.cpp       TIM4_CH4 50 Hz PWM、脉宽换算
 cmake/              CubeMX 生成的 CMake 目标（stm32cubemx / STM32_Drivers）
 ```
 
@@ -112,6 +117,7 @@ chassis_move(vx, vy, w)  ──> ChassisCtrl::update_mecanum()
 | 左摇杆 ↑ / ↓ | 前进 / 后退（全向） |
 | 左摇杆 ← / → | 左移 / 右移（横移） |
 | 右摇杆 ← / → | 逆时针 / 顺时针原地旋转 |
+| **× 键（A）** | 舵机在 30° / 150° 之间切换（边沿触发） |
 
 ```c
 #define JOY_CENTER     128

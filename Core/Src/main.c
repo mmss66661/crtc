@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "Chassis.h"
 #include "PS2.h"
+#include "Servo.h"
 #include <stdint.h>
 /* USER CODE END Includes */
 
@@ -71,6 +72,12 @@ void SystemClock_Config(void);
 #define CTRL_PERIOD_MS 20U    /* 50 Hz 控制周期 */
 #define PS2_LOST_LIMIT 5U     /* 连续读取失败多少次判定为掉线 */
 
+/* 舵机控制按键：手柄「×」键（A 键），每次按下在两个预设角度间切换。
+ * 按键位参见 PS2 协议：btn = ~(buttonLow | buttonHigh<<8)
+ *   bit10 = L1   bit11 = R1   bit14 = ×   bit15 = □
+ * 想换成别的键，把下面这一行改成对应位即可。 */
+#define SERVO_BTN_MASK (1U << 14)
+
 /* USER CODE END 0 */
 
 /**
@@ -82,6 +89,7 @@ int main(void) {
   /* USER CODE BEGIN 1 */
   PS2RawData raw = {0};
   uint8_t ps2_lost = 0U;
+  uint8_t servo_btn_prev = 0U;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -110,6 +118,7 @@ int main(void) {
   /* USER CODE BEGIN 2 */
   chassis_init();
   PS2_Init();
+  servo_init();
 
   /* USER CODE END 2 */
 
@@ -138,6 +147,19 @@ int main(void) {
       /* 左摇杆上推 = 前进（ly 减小），右推 = 右移；右摇杆右推 = 顺时针 */
       chassis_move(-(float)ly * JOY_SCALE, (float)lx * JOY_SCALE,
                    -(float)rx * W_SCALE);
+
+      /* 舵机：按键上升沿触发一次切换（按住不会连续翻） */
+      {
+        uint16_t btn =
+            (uint16_t)(raw.buttonLow | ((uint16_t)raw.buttonHigh << 8));
+        btn = (uint16_t)(~btn); /* 手柄按键低有效 */
+
+        uint8_t pressed = (btn & SERVO_BTN_MASK) ? 1U : 0U;
+        if (pressed && !servo_btn_prev) {
+          servo_toggle();
+        }
+        servo_btn_prev = pressed;
+      }
 
     } else {
       /* 手柄掉线保护：连续多次读失败则停车，避免保持最后速度冲出去 */
