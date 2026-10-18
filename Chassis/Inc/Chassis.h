@@ -9,7 +9,10 @@ extern "C" {
 #include "stm32f1xx_hal_tim.h"
 
 void chassis_init();
+/* 差速控制（保留备用）：v = 线速度，turn = 转向量 */
 void update(float v, float turn);
+/* 麦轮控制：vx = 前进(+)/后退(-)，vy = 右移(+)/左移(-)，w = 自转(+逆时针) */
+void chassis_move(float vx, float vy, float w);
 
 #ifdef __cplusplus
 }
@@ -51,7 +54,11 @@ public:
   ChassisCtrl();
   ~ChassisCtrl() = default;
 
+  /* 差速：v 线速度、turn 转向量 */
   void update(float v, float turn);
+
+  /* 麦轮逆运动学：vx 前后、vy 左右、w 自转，输出到四个轮子 */
+  void update_mecanum(float vx, float vy, float w);
 
   Motor &motor(int index) { return _m[index]; }
 

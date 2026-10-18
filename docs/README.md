@@ -69,5 +69,5 @@
 | CMSIS Core / Device 头文件 | Arm / STMicroelectronics 官方 | Apache-2.0 / BSD-3-Clause | Cortex-M3 内核寄存器定义 |
 | STM32CubeMX 生成的工程骨架 | STMicroelectronics 官方工具自动生成 | 同上 | 时钟、GPIO 初始化模板 |
 
-底盘差速解算、电机控制类（`Chassis/`）、PS2 协议帧（`PS2/`）均为本队自行编写。
+底盘麦轮解算、电机控制类（`Chassis/`）、PS2 协议帧（`PS2/`）均为本队自行编写。
 各开源组件的许可证原文随源码保留在 `Drivers/` 目录下（`LICENSE.txt`）。

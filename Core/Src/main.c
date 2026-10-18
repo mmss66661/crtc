@@ -60,10 +60,11 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* 调试模式：写死为持续前进，不依赖 PS2 手柄。
- * 取值范围 -3600 ~ 3600（对应 -100% ~ +100% 占空比）。
- * 3600 = 满占空比（CCR = ARR+1，PWM1 模式恒有效）。 */
-#define FORWARD_SPEED 3600.0f
+/* 麦轮演示：前 → 后 → 左 → 右 依次执行，动作序列写死、不随机。
+ * 轮速范围 -3600 ~ 3600（对应 -100% ~ +100% 占空比）。 */
+#define MOVE_SPEED 3600.0f   /* 单个动作的轮速 */
+#define MOVE_TIME_MS 3000U   /* 每个方向持续 3 秒 */
+#define MOVE_GAP_MS 5000U    /* 动作之间停顿 5 秒 */
 
 /* USER CODE END 0 */
 
@@ -74,7 +75,11 @@ void SystemClock_Config(void);
 int main(void) {
 
   /* USER CODE BEGIN 1 */
-
+  /* 四个动作的方向向量：(vx, vy) = 前、后、左、右
+   * vx > 0 前进，vy > 0 右移 */
+  static const float kDirVx[4] = {1.0f, -1.0f, 0.0f, 0.0f};
+  static const float kDirVy[4] = {0.0f, 0.0f, -1.0f, 1.0f};
+  uint8_t step = 0U;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -109,9 +114,16 @@ int main(void) {
   /* USER CODE BEGIN WHILE */
   while (1) {
 
-    update(FORWARD_SPEED, 0.0f);
+    /* 1. 按当前方向移动 MOVE_TIME_MS */
+    chassis_move(MOVE_SPEED * kDirVx[step], MOVE_SPEED * kDirVy[step], 0.0f);
+    HAL_Delay(MOVE_TIME_MS);
 
-    HAL_Delay(30);
+    /* 2. 停车，间隔 MOVE_GAP_MS 后执行下一个动作 */
+    chassis_move(0.0f, 0.0f, 0.0f);
+    HAL_Delay(MOVE_GAP_MS);
+
+    /* 3. 轮转到下一个方向：前 → 后 → 左 → 右 → 前 ... */
+    step = (uint8_t)((step + 1U) % 4U);
 
     /* USER CODE END WHILE */
 

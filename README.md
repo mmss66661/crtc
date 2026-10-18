@@ -3,7 +3,7 @@
 基于 **STM32F103C8T6** 的 PS2 手柄遥控小车，参加**重庆大学机器人训练大赛 CRTC2026**。
 使用 HAL 库 + CMake/Ninja 构建，C/C++ 混合编程。
 
-PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电机 PWM，实现前进、后退与差速转向。
+PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电机 PWM，实现前进、后退与左右横移等全向移动。
 
 ---
 
@@ -20,7 +20,7 @@ PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电�
 │   ├── 04-开发日志与问题排查.md
 │   └── media/
 │       └── chassis-motion.mp4    底盘运动演示视频
-├── Chassis/                      底盘层：电机控制 + 差速解算 + 板级初始化
+├── Chassis/                      底盘层：电机控制 + 麦轮解算 + 板级初始化
 ├── PS2/                          PS2 手柄驱动
 ├── Core/                         CubeMX 生成的 HAL 初始化
 ├── Drivers/                      STM32 HAL / CMSIS
@@ -71,8 +71,8 @@ PS2 手柄通过 SPI 读取摇杆与按键，主循环解算后驱动 4 路电�
 ```
 Core/               STM32CubeMX 生成的 HAL 初始化（时钟、GPIO、中断）
 Chassis/            底盘层（含板级引脚初始化，不再依赖 tim.c / spi.c）
-  Inc/Chassis.h       Motor 类（PWM + 方向脚）+ ChassisCtrl（差速解算）
-  Src/Chassis.cpp     TIM1 PWM 初始化、STBY 使能、速度限幅、左右轮分配
+  Inc/Chassis.h       Motor 类（PWM + 方向脚）+ ChassisCtrl（麦轮解算）
+  Src/Chassis.cpp     TIM1 PWM 初始化、STBY 使能、麦轮逆运动学解算
 PS2/                PS2 手柄驱动（当前固件未启用，引脚尚未适配）
   Inc/PS2.h           PS2 类 + C 接口（PS2_Init / PS2_ReadRaw）
   Src/PS2.cpp         SPI 9 字节帧协议、DWT 微秒延时
@@ -82,40 +82,49 @@ cmake/              CubeMX 生成的 CMake 目标（stm32cubemx / STM32_Drivers�
 ### 控制流程
 
 ```
-update(v, turn)  ──> ChassisCtrl::update()
-                        │
-          left  = v - turn/2
-          right = v + turn/2
-                        │
-                        ▼
-                 Motor::set_speed()
-                        │
-        ┌───────────────┴───────────────┐
-   正转 │ IN2 = 低, CCR = |speed|   反转 │ IN2 = 高, CCR = |speed|
-        └───────────────┬───────────────┘
-                        ▼
-              TIM1 CHx ──> IN1 占空比
+chassis_move(vx, vy, w)  ──> ChassisCtrl::update_mecanum()
+                                  │
+        FL = vx - vy - w      FR = vx + vy + w
+        BL = vx + vy - w      BR = vx - vy + w
+                                  │
+                          超量程时等比缩放
+                                  │
+                                  ▼
+                         Motor::set_speed()
+                                  │
+              ┌───────────────────┴───────────────────┐
+         正转 │ IN2 = 低, CCR = |speed|   反转 │ IN2 = 高, CCR = |speed|
+              └───────────────────┬───────────────────┘
+                                  ▼
+                        TIM1 CHx ──> IN1 占空比
 ```
 
+- `vx` 正为前进，`vy` 正为右移，`w` 正为逆时针自转
 - 速度限幅 ±3600（对应 100% 占空比），**死区 ±28** 防止电机堵转啸叫
 - `Motor::set_reversed(true)` 可在软件里翻转单侧转向，无需改接线
 
-### 当前固件：写死持续前进
+### 当前固件：麦轮四方向轮播演示
 
-当前 `Core/Src/main.c` 处于**调试模式**，已注释掉 PS2 遥控逻辑，上电后四轮持续前进：
+`Core/Src/main.c` 处于**调试模式**（PS2 遥控暂未启用），上电后按 **前 → 后 → 左 → 右** 固定顺序循环移动，序列写死不随机：
 
 ```c
-#define FORWARD_SPEED 3600.0f   // -3600 ~ 3600，3600 = 满占空比
+#define MOVE_SPEED    3600.0f   // 轮速，满占空比
+#define MOVE_TIME_MS  3000U     // 每个方向持续 3 秒
+#define MOVE_GAP_MS   5000U     // 动作之间停顿 5 秒
+
+static const float kDirVx[4] = {1.0f, -1.0f, 0.0f, 0.0f};   // 前 后 左 右
+static const float kDirVy[4] = {0.0f, 0.0f, -1.0f, 1.0f};
 
 while (1) {
-    update(FORWARD_SPEED, 0.0f);   // 线速度满速，转向 0
-    HAL_Delay(30);
+    chassis_move(MOVE_SPEED * kDirVx[step], MOVE_SPEED * kDirVy[step], 0.0f);
+    HAL_Delay(MOVE_TIME_MS);
+    chassis_move(0.0f, 0.0f, 0.0f);
+    HAL_Delay(MOVE_GAP_MS);
+    step = (step + 1U) % 4U;
 }
 ```
 
-调整 `FORWARD_SPEED` 即可：
-- 当前 **3600 = 100% 占空比（满速）**
-- 想降速按比例调小（如 1800 约 50%）；低于 ±28 会落入死区，电机不转
+一轮完整循环 32 秒（每个方向 3 s + 停顿 5 s）。改 `MOVE_TIME_MS` / `MOVE_GAP_MS` 即可调整节奏。
 
 需要恢复手柄遥控时，从 git 历史取回 PS2 控制分支即可（`git log -p Core/Src/main.c`）。
 
