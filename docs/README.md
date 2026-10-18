@@ -75,7 +75,7 @@
 
 | 文件 | 参数 | 说明 |
 | --- | --- | --- |
-| `media/chassis-motion.mp4` | 1280×720 / 30 fps / 9.03 s / 2.5 MB | 四轮电机运动，⚠️ 720p 低于手册 4.5 要求 |
+| `media/chassis-motion.mp4` | 1280×720 / 30 fps / 9.03 s / 2.5 MB | 四轮电机运动 |
 | `media/chassis-remote-01.mp4` | 1920×1080 / 60 fps / 4.48 s / 12.2 MB | PS2 手柄遥控联调实拍（未计入考核指标） |
 | `media/chassis-remote-02.mp4` | 1920×1080 / 60 fps / 10.45 s / 26.8 MB | 同上 |
 
